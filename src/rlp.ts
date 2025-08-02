@@ -1,4 +1,4 @@
-import { numberToVarBytesBE } from '@noble/curves/abstract/utils';
+import { numberToVarBytesBE } from '@noble/curves/utils.js';
 import * as P from 'micro-packed';
 import { isBytes } from './utils.ts';
 

@@ -12,8 +12,8 @@
     "src"
   ],
   "dependencies": {
-    "@noble/curves": "~1.9.2",
-    "@noble/hashes": "2.0.0-beta.1",
+    "@noble/curves": "2.0.0-beta.1",
+    "@noble/hashes": "2.0.0-beta.3",
     "micro-packed": "~0.7.3"
   },
   "devDependencies": {
@@ -60,7 +60,7 @@
   "scripts": {
     "build": "npm run build:clean; tsc",
     "build:clean": "rm -f *.{js,d.ts,js.map,d.ts.map}; rm -rf {abi,net}",
-    "build:release": "npx jsbt esbuild test/build",
+    "build:release": "npx --no @paulmillr/jsbt esbuild test/build",
     "bench": "cd test/benchmark; npm install; node tx.ts",
     "lint": "prettier --check src",
     "format": "prettier --write src",

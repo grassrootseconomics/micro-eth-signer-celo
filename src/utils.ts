@@ -121,28 +121,23 @@ export function sign(
   privKey: Uint8Array,
   extraEntropy: boolean | Uint8Array = true
 ) {
-  const sig = secp256k1.sign(hash, privKey, { extraEntropy: extraEntropy });
+  const sig = secp256k1.sign(hash, privKey, {
+    prehash: false,
+    extraEntropy: extraEntropy,
+    format: 'recovered',
+  });
   // yellow paper page 26 bans recovery 2 or 3
   // https://ethereum.github.io/yellowpaper/paper.pdf
-  if ([2, 3].includes(sig.recovery)) throw new Error('invalid signature rec=2 or 3');
-  return sig;
+  if ([2, 3].includes(sig[0])) throw new Error('invalid signature rec=2 or 3');
+  return secp256k1.Signature.fromBytes(sig, 'recovered');
 }
 export type RawSig = { r: bigint; s: bigint };
-export type Sig = RawSig | Uint8Array;
-function validateRaw(obj: Sig) {
-  if (isBytes(obj)) return true;
-  if (typeof obj === 'object' && obj && typeof obj.r === 'bigint' && typeof obj.s === 'bigint')
-    return true;
-  throw new Error('expected valid signature');
+export function verify(sig: Uint8Array, hash: Uint8Array, publicKey: Uint8Array) {
+  return secp256k1.verify(sig, hash, publicKey, { prehash: false });
 }
-export function verify(sig: Sig, hash: Uint8Array, publicKey: Uint8Array) {
-  validateRaw(sig);
-  return secp256k1.verify(sig, hash, publicKey);
-}
-export function initSig(sig: Sig, bit: number) {
-  validateRaw(sig);
+export function initSig(sig: Uint8Array | RawSig, bit: number) {
   const s = isBytes(sig)
-    ? secp256k1.Signature.fromCompact(sig)
+    ? secp256k1.Signature.fromBytes(sig, 'compact')
     : new secp256k1.Signature(sig.r, sig.s);
   return s.addRecoveryBit(bit);
 }
