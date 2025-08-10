@@ -5,7 +5,7 @@ import { type IWeb3Provider, strip0x } from '../utils.ts';
 
 // No support for IDN names
 export function namehash(address: string): Uint8Array {
-  let res = new Uint8Array(32);
+  let res: Uint8Array = new Uint8Array(32);
   if (!address) return res;
   for (let label of address.split('.').reverse())
     res = keccak_256(concatBytes(res, keccak_256(utf8ToBytes(label))));

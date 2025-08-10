@@ -25,7 +25,7 @@ API difference:
 
 */
 const BYTES_PER_CHUNK = 32; // Should be equal to digest size of hash
-const EMPTY_CHUNK = new Uint8Array(BYTES_PER_CHUNK);
+const EMPTY_CHUNK: Uint8Array = new Uint8Array(BYTES_PER_CHUNK);
 
 export const ForkSlots = {
   Phase0: 0,
