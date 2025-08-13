@@ -3,6 +3,7 @@ import { hexToBytes as _hexToBytes, isBytes as _isBytes, bytesToHex } from '@nob
 import { type Coder, coders } from 'micro-packed';
 
 export const isBytes: typeof _isBytes = _isBytes;
+export type Bytes = Uint8Array;
 
 // There is no network code in the library.
 // The types are used to check external network provider interfaces.
@@ -85,8 +86,8 @@ const genEthHex = (keepLeadingZero = true): Coder<Uint8Array, string> => ({
     return add0x(hex);
   },
 });
-export const ethHex: Coder<Uint8Array, string> = /* @__PURE__ */ genEthHex(true);
-export const ethHexNoLeadingZero: Coder<Uint8Array, string> = /* @__PURE__ */ genEthHex(false);
+export const ethHex: Coder<Bytes, string> = /* @__PURE__ */ genEthHex(true);
+export const ethHexNoLeadingZero: Coder<Bytes, string> = /* @__PURE__ */ genEthHex(false);
 
 const ethHexStartRe = /^0[xX]/;
 export function add0x(hex: string): string {
