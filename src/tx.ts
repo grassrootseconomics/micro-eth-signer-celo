@@ -18,35 +18,46 @@ type VersionType<V extends AnyCoderStream> = {
   [K in keyof V]: { type: K; data: P.UnwrapCoder<V[K]> };
 }[keyof V];
 
-export type TxCoder<T extends TxType> = P.UnwrapCoder<(typeof TxVersions)[T]>;
+export type TxCoder<T extends TxType> = P.UnwrapCoder<(typeof TxVersions)[T]['coder']>;
 
-const createTxMap = <T extends AnyCoderStream>(versions: T): P.CoderType<VersionType<T>> => {
-  const ent = Object.entries(versions);
-  // 'legacy' => {type, ver, coder}
-  const typeMap = Object.fromEntries(ent.map(([type, coder], ver) => [type, { type, ver, coder }]));
-  // '0' => {type, ver, coder}
-  const verMap = Object.fromEntries(ent.map(([type, coder], ver) => [ver, { type, ver, coder }]));
+// Replace old createTxMap with explicit version-aware variant
+const createTxMap = <T extends Record<string, { ver: number; coder: P.CoderType<any> }>>(
+  versions: T
+): P.CoderType<{
+  [K in keyof T]: { type: K; data: P.UnwrapCoder<T[K]['coder']> };
+}[keyof T]> => {
+  const typeMap = versions;
+  const verMap: Record<number, { type: keyof T; coder: P.CoderType<any> }> = {} as any;
+  for (const [type, { ver, coder }] of Object.entries(typeMap)) {
+    if (type !== 'legacy') {
+      if (ver < 0 || ver > 0x7f) throw new Error(`tx version out of range 0x${ver.toString(16)}`);
+      if (verMap[ver]) throw new Error(`duplicate tx version byte 0x${ver.toString(16)}`);
+      verMap[ver] = { type: type as keyof T, coder };
+    }
+  }
   return P.wrap({
-    encodeStream(w: P.Writer, value: VersionType<T>) {
-      const t = value.type as string;
-      if (!typeMap.hasOwnProperty(t)) throw new Error(`txVersion: wrong type=${t}`);
-      const curr = typeMap[t];
-      if (t !== 'legacy') w.byte(curr.ver);
-      curr.coder.encodeStream(w, value.data);
+    encodeStream(w: P.Writer, value: { type: keyof T; data: any }) {
+      const entry = typeMap[value.type as string];
+      if (!entry) throw new Error(`txVersion: wrong type=${String(value.type)}`);
+      if (value.type !== 'legacy') w.byte(entry.ver);
+      entry.coder.encodeStream(w, value.data);
     },
     decodeStream(r: P.Reader) {
-      const v = r.byte(true);
-      if (v === 0xff) throw new Error('reserved version 0xff');
-      // TODO: version=0 is legacy, but it is never wrapped in test vectors
-      if (v === 0x00) throw new Error('version=0 unsupported');
-      if (0 <= v && v <= 0x7f) {
-        if (!verMap.hasOwnProperty(v.toString())) throw new Error(`wrong version=${v}`);
-        const curr = verMap[v];
-        r.byte(false); // skip first byte
-        const d = curr.coder.decodeStream(r);
-        return { type: curr.type, data: d };
+      const first = r.byte(true); // peek
+      if (first <= 0x7f) {
+        if (first === 0xff) throw new Error('reserved version 0xff');
+        if (first === 0x00) throw new Error('version=0 unsupported');
+        const ver = r.byte(); // consume
+        const mapped = verMap[ver];
+        if (!mapped) throw new Error(`wrong version=0x${ver.toString(16)}`);
+        const d = mapped.coder.decodeStream(r);
+        return { type: mapped.type, data: d } as any;
       }
-      return { type: 'legacy', data: typeMap.legacy.coder.decodeStream(r) };
+      // Legacy: no prefix, decode entire stream with legacy coder
+      const legacyEntry = typeMap['legacy'];
+      if (!legacyEntry) throw new Error('legacy tx type missing');
+      const d = legacyEntry.coder.decodeStream(r);
+      return { type: 'legacy', data: d } as any;
     },
   });
 };
@@ -241,6 +252,7 @@ const coders = {
   r: U256BE,
   s: U256BE,
   authorizationList: array(authorizationItem),
+  feeCurrency: addrCoder,
 };
 type Coders = typeof coders;
 type CoderName = keyof Coders;
@@ -377,14 +389,20 @@ const eip7702 = txStruct([
   'chainId', 'nonce', 'maxPriorityFeePerGas', 'maxFeePerGas', 'gasLimit', 'to', 'value', 'data', 'accessList',
   'authorizationList'] as const,
   ['yParity', 'r', 's'] as const);
+// prettier-ignore
+const cip64 = txStruct([
+  'chainId', 'nonce', 'maxPriorityFeePerGas', 'maxFeePerGas', 'gasLimit', 'to', 'value', 'data', 'accessList',
+  'feeCurrency'] as const,
+  ['yParity', 'r', 's'] as const);
 
 export const TxVersions = {
-  legacy, // 0x00 (kinda)
-  eip2930, // 0x01
-  eip1559, // 0x02
-  eip4844, // 0x03
-  eip7702, // 0x04
-};
+  legacy: { ver: 0x00, coder: legacy },
+  eip2930: { ver: 0x01, coder: eip2930 },
+  eip1559: { ver: 0x02, coder: eip1559 },
+  eip4844: { ver: 0x03, coder: eip4844 },
+  eip7702: { ver: 0x04, coder: eip7702 },
+  cip64: { ver: 0x7b, coder: cip64 },   // explicit 0x7b
+} as const;
 
 export const RawTx = P.apply(createTxMap(TxVersions), {
   // NOTE: we apply checksum to addresses here, since chainId is not available inside coders
@@ -401,6 +419,9 @@ export const RawTx = P.apply(createTxMap(TxVersions), {
         item.address = addr.addChecksum(item.address);
       }
     }
+    if ((data.type === 'cip64') && data.data.feeCurrency) {
+      data.data.feeCurrency = addr.addChecksum(data.data.feeCurrency);
+    }
     return data;
   },
   // Nothing to check here, is validated in validator
@@ -414,7 +435,11 @@ export const RawTx = P.apply(createTxMap(TxVersions), {
 export const RlpTx: P.CoderType<{
   type: string;
   data: import('./rlp.js').RLPInput;
-}> = createTxMap(Object.fromEntries(Object.keys(TxVersions).map((k) => [k, RLP])));
+}> = createTxMap(
+  Object.fromEntries(
+    Object.entries(TxVersions).map(([k, { ver }]) => [k, { ver, coder: RLP }])
+  ) as any
+);
 
 // Field-related utils
 export type TxType = keyof typeof TxVersions;
@@ -514,6 +539,9 @@ const validators: Record<string, (num: any, { strict, type, data }: ValidationOp
       this.nonce(nonce, opts);
     }
   },
+  feeCurrency(address: string) {
+    if (!addr.isValid(address)) throw new Error('address checksum does not match');
+  }
 };
 
 // Validation
@@ -536,7 +564,8 @@ export function validateFields(
 ): void {
   aobj(data);
   if (!TxVersions.hasOwnProperty(type)) throw new Error(`unknown tx type=${type}`);
-  const txType = TxVersions[type];
+  const txTypeEntry = TxVersions[type];
+  const txType = txTypeEntry.coder as FieldCoder<any>;
   const dataFields = new Set(Object.keys(data));
   const dataHas = (field: string) => dataFields.has(field);
   function checkField(field: CoderName) {
@@ -579,7 +608,7 @@ export function validateFields(
 const sortedFieldOrder = [
   'to', 'value', 'nonce',
   'maxFeePerGas', 'maxFeePerBlobGas', 'maxPriorityFeePerGas', 'gasPrice', 'gasLimit',
-  'accessList', 'authorizationList', 'blobVersionedHashes', 'chainId', 'data', 'type',
+  'accessList', 'authorizationList', 'blobVersionedHashes', 'chainId', 'data', 'feeCurrency', 'type',
   'r', 's', 'yParity', 'v'
 ] as const;
 

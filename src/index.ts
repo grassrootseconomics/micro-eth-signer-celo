@@ -85,20 +85,20 @@ type Required<T> = T extends undefined ? never : T;
 type HumanInput<T extends TxType | undefined> = T extends undefined
   ? HumanInputInnerDefault
   : HumanInputInner<Required<T>>;
-type TxVersions = typeof TxVersions;
+type TxVersionsType = typeof TxVersions;
 type SpecifyVersion<T extends TxType[]> = UnwrapCoder<
   {
-    [K in keyof TxVersions]: K extends T[number] ? TxVersions[K] : never;
-  }[keyof TxVersions]
+    [K in keyof TxVersionsType]: K extends T[number] ? TxVersionsType[K]['coder'] : never;
+  }[keyof TxVersionsType]
 >;
 type SpecifyVersionNeg<T extends TxType[]> = UnwrapCoder<
   Exclude<
     {
-      [K in keyof TxVersions]: TxVersions[K];
-    }[keyof TxVersions],
+      [K in keyof TxVersionsType]: TxVersionsType[K]['coder'];
+    }[keyof TxVersionsType],
     {
-      [K in keyof TxVersions]: K extends T[number] ? TxVersions[K] : never;
-    }[keyof TxVersions]
+      [K in keyof TxVersionsType]: K extends T[number] ? TxVersionsType[K]['coder'] : never;
+    }[keyof TxVersionsType]
   >
 >;
 
@@ -134,8 +134,8 @@ export class Transaction<T extends TxType> {
   static prepare<T extends TxType>(data: HumanInput<T>, strict = true): Transaction<T> {
     const type = (data.type !== undefined ? data.type : TX_DEFAULTS.type) as T;
     if (!TxVersions.hasOwnProperty(type)) throw new Error(`wrong transaction type=${type}`);
-    const coder = TxVersions[type];
-    const fields = new Set(coder.fields as string[]);
+    const coder = TxVersions[type].coder as any;
+    const fields = new Set((coder.fields as string[]) || []);
     // Copy default fields, but only if the field is present on the tx type.
     const raw: Record<string, any> = { type };
     for (const f in TX_DEFAULTS) {
@@ -185,14 +185,14 @@ export class Transaction<T extends TxType> {
   static fromRawBytes(
     bytes: Uint8Array,
     strict = false
-  ): Transaction<'legacy' | 'eip2930' | 'eip1559' | 'eip4844' | 'eip7702'> {
+  ): Transaction<'legacy' | 'eip2930' | 'eip1559' | 'eip4844' | 'eip7702' | 'cip64'> {
     const raw = RawTx.decode(bytes);
     return new Transaction(raw.type, raw.data, strict);
   }
   static fromHex(
     hex: string,
     strict = false
-  ): Transaction<'eip1559' | 'legacy' | 'eip2930' | 'eip4844' | 'eip7702'> {
+  ): Transaction<'eip1559' | 'legacy' | 'eip2930' | 'eip4844' | 'eip7702' | 'cip64'> {
     return Transaction.fromRawBytes(ethHexNoLeadingZero.decode(hex), strict);
   }
   private assertIsSigned() {

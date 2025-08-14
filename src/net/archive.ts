@@ -156,13 +156,14 @@ export type TxInfo = {
   maxFeePerGas?: bigint;
   value: bigint;
   gasPrice: bigint;
+  feeCurrency?: string;
   // blobs
   maxFeePerBlobGas?: bigint;
   blobVersionedHashes?: string[];
 };
 
 export type TxInfoFull = {
-  type: 'legacy' | 'eip2930' | 'eip1559' | 'eip4844' | 'eip7702';
+  type: 'legacy' | 'eip2930' | 'eip1559' | 'eip4844' | 'eip7702' | 'cip64';
   info: TxInfo;
   receipt: TxReceipt;
   raw: string | undefined;
@@ -302,10 +303,10 @@ export type LogOpts = Callbacks &
   (
     | Pagination
     | {
-        fromBlock: number;
-        toBlock: number;
-        limitLogs: number; // limit block range per request
-      }
+      fromBlock: number;
+      toBlock: number;
+      limitLogs: number; // limit block range per request
+    }
   );
 export type Balances = {
   balances: Record<string, bigint>;
@@ -536,7 +537,7 @@ export class Web3Provider implements IWeb3Provider {
     const out: Action[] = [];
     const traces: Record<string, Promise<ActionOts[]>> = {};
     const info: Record<string, TxInfoFull> = {};
-    for (;;) {
+    for (; ;) {
       // NOTE: we don't have enough info just from search, we need to call trace on every
       // transaction, since internal transaction may include stuff like 'somebody called contract,
       // contract sent eth' (not available via txInfo/txReceipt!)
@@ -607,7 +608,7 @@ export class Web3Provider implements IWeb3Provider {
     let lastBlock = opts.fromBlock || 0;
     const perBlock: Record<number, number> = {};
     const out: Action[] = [];
-    for (;;) {
+    for (; ;) {
       const params: Record<string, any> = {
         fromBlock: ethNum(lastBlock),
         toAddress: [address],
@@ -905,7 +906,7 @@ export class Web3Provider implements IWeb3Provider {
           from: decoded.from,
           tokens: new Map([[1n, decoded.value]]),
         };
-      } catch (e) {}
+      } catch (e) { }
       // Weth doesn't issue Transfer event on Deposit/Withdrawal
       // NOTE: we don't filter for WETH_CONTRACT here in case of other contracts with similar API or different networks
       try {
@@ -917,7 +918,7 @@ export class Web3Provider implements IWeb3Provider {
           to: decoded.dst,
           tokens: new Map([[1n, decoded.wad]]),
         };
-      } catch (e) {}
+      } catch (e) { }
       try {
         const decoded = WETH_WITHDRAW.decode(log.topics, log.data);
         return {
@@ -927,7 +928,7 @@ export class Web3Provider implements IWeb3Provider {
           to: log.address,
           tokens: new Map([[1n, decoded.wad]]),
         };
-      } catch (e) {}
+      } catch (e) { }
     } else if (token.abi === 'ERC721') {
       try {
         const decoded = ERC721_TRANSFER.decode(log.topics, log.data);
@@ -937,7 +938,7 @@ export class Web3Provider implements IWeb3Provider {
           to: decoded.to,
           tokens: new Map([[decoded.tokenId, 1n]]),
         };
-      } catch (e) {}
+      } catch (e) { }
     } else if (token.abi === 'ERC1155') {
       try {
         const decoded = ERC1155_SINGLE.decode(log.topics, log.data);
@@ -947,7 +948,7 @@ export class Web3Provider implements IWeb3Provider {
           to: decoded.to,
           tokens: new Map([[decoded.id, decoded.value]]),
         };
-      } catch (e) {}
+      } catch (e) { }
       try {
         const decoded = ERC1155_BATCH.decode(log.topics, log.data);
         return {
@@ -956,7 +957,7 @@ export class Web3Provider implements IWeb3Provider {
           to: decoded.to,
           tokens: new Map(decoded.ids.map((i, j) => [i, decoded.values[j]])),
         };
-      } catch (e) {}
+      } catch (e) { }
     }
     return; // unknown token type
   }
