@@ -14,9 +14,6 @@ export type AnyCoderStream = Record<string, P.CoderType<any>>;
 // new tx: [0, 0x7f]
 // legacy: [0xc0, 0xfe]
 // reserved: 0xff
-type VersionType<V extends AnyCoderStream> = {
-  [K in keyof V]: { type: K; data: P.UnwrapCoder<V[K]> };
-}[keyof V];
 
 export type TxCoder<T extends TxType> = P.UnwrapCoder<(typeof TxVersions)[T]['coder']>;
 
